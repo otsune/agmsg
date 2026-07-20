@@ -92,6 +92,23 @@ function toBashPath(p) {
   return p.replace(/\\/g, '/');
 }
 
+function resolveBash(platform = process.platform, env = process.env, exists = fs.existsSync) {
+  if (platform !== 'win32') return 'bash';
+
+  const candidates = [
+    env.GIT_BASH,
+    env.AGMSG_BASH,
+    env.ProgramFiles && path.join(env.ProgramFiles, 'Git', 'bin', 'bash.exe'),
+    env.LOCALAPPDATA && path.join(env.LOCALAPPDATA, 'Programs', 'Git', 'bin', 'bash.exe')
+  ].filter(Boolean);
+
+  const gitBash = candidates.find(candidate => exists(candidate));
+  if (!gitBash) {
+    throw new Error('Git Bash not found. Install Git for Windows or set GIT_BASH to bash.exe.');
+  }
+  return gitBash;
+}
+
 function runInstaller(passthroughArgs) {
   // Fetch the canonical setup.sh to a private tempdir, then exec it directly
   // with bash. This keeps the installer's stdin wired to the parent process's
@@ -122,7 +139,14 @@ function runInstaller(passthroughArgs) {
     }
 
     // Pin the clone inside setup.sh to the same ref we fetched it from.
-    const result = spawnSync('bash', [setupPath, ...passthroughArgs], {
+    let bash;
+    try {
+      bash = resolveBash();
+    } catch (error) {
+      console.error('agmsg:', error.message);
+      process.exit(1);
+    }
+    const result = spawnSync(bash, [setupPath, ...passthroughArgs], {
       stdio: 'inherit',
       env: Object.assign({}, process.env, { AGMSG_REF: ref })
     });
@@ -162,4 +186,4 @@ if (require.main === module) {
   main();
 }
 
-module.exports = { toBashPath };
+module.exports = { resolveBash, toBashPath };
